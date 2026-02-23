@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DeviceToken extends Model
 {
     protected $fillable = [
-        'staff_id',
+        'user_id',
         'fcm_token',
         'device_name',
         'last_used_at',
@@ -18,8 +18,8 @@ class DeviceToken extends Model
         'last_used_at' => 'datetime',
     ];
 
-    public function staff(): BelongsTo
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(Staff::class);
+        return $this->belongsTo(User::class);
     }
 }

@@ -6,25 +6,7 @@ use App\Models\WhatsAppSession;
 
 class ConversationManager
 {
-    const STATE_MAIN_MENU = 'MAIN_MENU';
-    const STATE_RESERVATION_GUESTS = 'RESERVATION_GUESTS';
-    const STATE_RESERVATION_DATE = 'RESERVATION_DATE';
-    const STATE_RESERVATION_TIME = 'RESERVATION_TIME';
-    const STATE_RESERVATION_LOCATION = 'RESERVATION_LOCATION';
-    const STATE_RESERVATION_NAME = 'RESERVATION_NAME';
-    const STATE_RESERVATION_CONFIRM = 'RESERVATION_CONFIRM';
-    const STATE_ORDER_TABLE = 'ORDER_TABLE';
-    const STATE_ORDER_CATEGORY = 'ORDER_CATEGORY';
-    const STATE_ORDER_ITEMS = 'ORDER_ITEMS';
-    const STATE_ORDER_QUANTITY = 'ORDER_QUANTITY';
-    const STATE_ORDER_SPECIAL = 'ORDER_SPECIAL';
-    const STATE_ORDER_CART = 'ORDER_CART';
-    const STATE_ORDER_CONFIRM = 'ORDER_CONFIRM';
-    const STATE_CURRENT_ORDER = 'CURRENT_ORDER';
-    const STATE_NOTIFICATION_TABLE = 'NOTIFICATION_TABLE';
-    const STATE_PAYMENT_METHOD = 'PAYMENT_METHOD';
-    const STATE_PAYMENT_MPESA = 'PAYMENT_MPESA';
-    const STATE_PAYMENT_PROCESSING = 'PAYMENT_PROCESSING';
+    // Banking context: single AI conversation state
     const STATE_AI_CONVERSATION = 'AI_CONVERSATION';
 
     protected StateManager $stateManager;
@@ -42,18 +24,19 @@ class ConversationManager
     {
         $session = WhatsAppSession::firstOrCreate(
             ['phone_number' => $phoneNumber],
-            ['state' => self::STATE_MAIN_MENU, 'last_activity_at' => now()]
+            ['state' => self::STATE_AI_CONVERSATION, 'last_activity_at' => now()]
         );
 
-        if ($session->isExpired()) {
+        $wasExpired = $session->isExpired();
+        if ($wasExpired) {
             $session->update([
-                'state' => self::STATE_MAIN_MENU,
+                'state' => self::STATE_AI_CONVERSATION,
                 'data' => null,
-                'current_order_id' => null,
                 'last_activity_at' => now(),
             ]);
             $this->stateManager->clearStateByPhone($phoneNumber);
         }
+        $session->wasExpired = $wasExpired;
 
         return $session;
     }
@@ -71,7 +54,7 @@ class ConversationManager
 
         // Fall back to DB and sync cache
         $session = $this->getSession($phoneNumber);
-        $state = $session->state ?? self::STATE_MAIN_MENU;
+        $state = $session->state ?? self::STATE_AI_CONVERSATION;
         $this->stateManager->setStateByPhone($phoneNumber, $state);
 
         return $state;
@@ -125,58 +108,28 @@ class ConversationManager
     }
 
     /**
-     * Set the current order for this session.
+     * Link a user to this session (uses guest_id column for compatibility).
      */
-    public function setCurrentOrder(string $phoneNumber, int $orderId): void
+    public function linkGuest(string $phoneNumber, int $userId): void
     {
         $this->getSession($phoneNumber)->update([
-            'current_order_id' => $orderId,
+            'guest_id' => $userId,
             'last_activity_at' => now(),
         ]);
     }
 
     /**
-     * Set the current table for this session.
+     * Clear session state and data.
      */
-    public function setCurrentTable(string $phoneNumber, int $tableId): void
-    {
-        $this->getSession($phoneNumber)->update([
-            'current_table_id' => $tableId,
-            'last_activity_at' => now(),
-        ]);
-    }
-
-    /**
-     * Link a guest to this session.
-     */
-    public function linkGuest(string $phoneNumber, int $guestId): void
-    {
-        $this->getSession($phoneNumber)->update([
-            'guest_id' => $guestId,
-            'last_activity_at' => now(),
-        ]);
-    }
-
-    /**
-     * Clear session state and data (reset to main menu).
-     * Preserves current_table_id by default (guest stays at their table).
-     */
-    public function clearSession(string $phoneNumber, bool $clearTable = false): void
+    public function clearSession(string $phoneNumber): void
     {
         $session = $this->getSession($phoneNumber);
 
-        $updateData = [
-            'state' => self::STATE_MAIN_MENU,
+        $session->update([
+            'state' => self::STATE_AI_CONVERSATION,
             'data' => null,
-            'current_order_id' => null,
             'last_activity_at' => now(),
-        ];
-
-        if ($clearTable) {
-            $updateData['current_table_id'] = null;
-        }
-
-        $session->update($updateData);
+        ]);
 
         $this->stateManager->clearStateByPhone($phoneNumber);
     }

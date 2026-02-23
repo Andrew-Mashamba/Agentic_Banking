@@ -2,8 +2,9 @@
 
 namespace App\Providers;
 
-use App\Models\Order;
-use App\Observers\OrderObserver;
+use App\Contracts\AttachmentScannerInterface;
+use App\Services\WhatsApp\AttachmentScanners\ClamAvScanner;
+use App\Services\WhatsApp\AttachmentScanners\NullScanner;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -14,6 +15,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(AttachmentScannerInterface::class, function () {
+            return config('whatsapp.attachments.scanner') === 'clamav'
+                ? new ClamAvScanner
+                : new NullScanner;
+        });
+
         // Force HTTPS in production environment
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
@@ -25,9 +32,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register Order observer for WhatsApp notifications
-        Order::observe(OrderObserver::class);
-
         // Fix Livewire asset URL for sub-directory deployment.
         // When APP_URL includes a path (e.g. /Smart-Dining), the Livewire
         // script tag must include that prefix so the browser requests the

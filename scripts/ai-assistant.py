@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Smart Dining AI Assistant — concurrent HTTP sidecar that routes WhatsApp
-conversations to the Agent CLI with per-phone session isolation.
+Agentic Banking AI Assistant — concurrent HTTP sidecar that routes WhatsApp
+conversations to the Cursor Agent CLI with per-phone session isolation.
 
 Speed optimizations:
   - Pre-fetched DB context in prompt (eliminates tool-use round trips)
@@ -30,6 +30,7 @@ GET /health  -> {"status": "ok", "active_sessions": N}
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -38,10 +39,44 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
 PORT = int(os.environ.get("AI_PORT", 8101))
-AGENT_BIN = os.environ.get("AGENT_CLI_PATH", "/usr/local/bin/agent")
+AGENT_BIN = os.environ.get("AGENT_CLI_PATH", "/Users/andrewmashamba/.local/bin/agent")
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MAX_PROMPT_LEN = 24000  # Increased for pre-fetched menu data
+RULES_FILE = os.path.join(PROJECT_DIR, ".cursor", "rules", "whatsapp-banker.mdc")
+# Align with Cursor Agent CLI / Claude 200k-token context: 200k tokens × ~4 chars/token ≈ 800k chars
+# Overridable via AI_MAX_PROMPT_LEN (e.g. 800000). See docs/smart-context-and-prompting.md
+MAX_PROMPT_LEN = int(os.environ.get("AI_MAX_PROMPT_LEN", 800_000))
+# Max HTTP body size for POST /ask (must allow JSON of MAX_PROMPT_LEN; 2MB covers 800k chars + overhead)
+MAX_BODY_BYTES = int(os.environ.get("AI_MAX_BODY_BYTES", 2_000_000))
 TIMEOUT = 120  # Reduced — pre-fetched data means fewer tool calls
+
+# ── Cached rules content ────────────────────────────────────────────
+_banker_rules: str | None = None
+
+
+def load_banker_rules() -> str:
+    """Load and cache the banker rules from .cursor/rules/whatsapp-banker.mdc"""
+    global _banker_rules
+    if _banker_rules is not None:
+        return _banker_rules
+
+    try:
+        with open(RULES_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        # Strip YAML frontmatter (between --- markers)
+        match = re.match(r"^---\n.*?\n---\n", content, re.DOTALL)
+        if match:
+            _banker_rules = content[match.end():].strip()
+        else:
+            _banker_rules = content.strip()
+        print(f"[AI] Loaded banker rules ({len(_banker_rules)} chars)", file=sys.stderr)
+    except FileNotFoundError:
+        print(f"[WARN] Rules file not found: {RULES_FILE}", file=sys.stderr)
+        _banker_rules = ""
+    except Exception as e:
+        print(f"[WARN] Failed to load rules: {e}", file=sys.stderr)
+        _banker_rules = ""
+
+    return _banker_rules
 
 # ── Per-phone session locks ──────────────────────────────────────────
 _phone_locks: dict[str, threading.Lock] = {}
@@ -81,8 +116,11 @@ class AiHandler(BaseHTTPRequestHandler):
             return
 
         content_length = int(self.headers.get("Content-Length", 0))
-        if content_length == 0 or content_length > 200000:
-            self._json_response(400, {"success": False, "message": "Invalid request body."})
+        if content_length == 0 or content_length > MAX_BODY_BYTES:
+            self._json_response(400, {
+                "success": False,
+                "message": f"Invalid request body (max {MAX_BODY_BYTES} bytes).",
+            })
             return
 
         try:
@@ -100,18 +138,21 @@ class AiHandler(BaseHTTPRequestHandler):
         max_chars = body.get("max_chars")
         phone_number = (body.get("phone_number") or "").strip()
 
-        # Build the full prompt
+        # Build the full prompt with banker rules injected
+        banker_rules = load_banker_rules()
         full_prompt = ""
+        if banker_rules:
+            full_prompt += banker_rules + "\n\n---\n\n"
         if system_prompt:
             full_prompt += system_prompt + "\n\n"
-        full_prompt += prompt
+        full_prompt += "CLIENT MESSAGE:\n" + prompt
         if max_chars and isinstance(max_chars, int) and max_chars > 0:
             full_prompt += f"\n\nIMPORTANT: Keep your response under {max_chars} characters. Be concise — under 200 words."
 
         if len(full_prompt) > MAX_PROMPT_LEN:
             self._json_response(400, {
                 "success": False,
-                "message": f"Combined prompt exceeds {MAX_PROMPT_LEN} characters.",
+                "message": f"Combined prompt exceeds {MAX_PROMPT_LEN:,} characters (Cursor Agent CLI–aligned limit).",
             })
             return
 
@@ -148,7 +189,8 @@ class AiHandler(BaseHTTPRequestHandler):
 
     def _call_agent(self, full_prompt: str):
         """Call the Agent CLI subprocess."""
-        env = {**os.environ, "HOME": "/var/www"}
+        # Use current user's HOME directory for agent to write config/cache
+        env = os.environ.copy()
 
         cmd = [
             AGENT_BIN, "-p",
@@ -156,6 +198,7 @@ class AiHandler(BaseHTTPRequestHandler):
             "--model", "auto",
             "--force",
             "--trust",
+            "--approve-mcps",
             "--workspace", PROJECT_DIR,
             full_prompt,
         ]
@@ -248,12 +291,19 @@ class AiHandler(BaseHTTPRequestHandler):
 
 def main():
     os.chdir(PROJECT_DIR)
+
+    # Pre-load banker rules at startup
+    rules = load_banker_rules()
+    rules_status = f"loaded ({len(rules)} chars)" if rules else "NOT FOUND"
+
     server = ThreadingHTTPServer(("127.0.0.1", PORT), AiHandler)
-    print(f"[AI] Smart Dining AI Assistant listening on 127.0.0.1:{PORT}")
+    print(f"[AI] Agentic Banking AI Assistant listening on 127.0.0.1:{PORT}")
     print(f"[AI] Project dir:  {PROJECT_DIR}")
+    print(f"[AI] Rules file:   {RULES_FILE}")
+    print(f"[AI] Rules status: {rules_status}")
     print(f"[AI] Agent bin:    {AGENT_BIN}")
     print(f"[AI] Model:        auto")
-    print(f"[AI] Timeout:      {TIMEOUT}s | Max prompt: {MAX_PROMPT_LEN} chars")
+    print(f"[AI] Timeout:      {TIMEOUT}s | Max prompt: {MAX_PROMPT_LEN:,} chars | Max body: {MAX_BODY_BYTES:,} bytes")
     print(f"[AI] Threading:    enabled (per-phone session isolation)")
 
     def _cleanup_loop():

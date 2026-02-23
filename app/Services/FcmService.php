@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\DeviceToken;
-use App\Models\Staff;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Messaging\CloudMessage;
@@ -18,11 +18,11 @@ class FcmService
     }
 
     /**
-     * Send a data-only FCM message to a specific staff member's devices.
+     * Send a data-only FCM message to a specific user's devices.
      */
-    public function sendToStaff(int $staffId, array $data): void
+    public function sendToUser(int $userId, array $data): void
     {
-        $tokens = DeviceToken::where('staff_id', $staffId)
+        $tokens = DeviceToken::where('user_id', $userId)
             ->pluck('fcm_token')
             ->toArray();
 
@@ -34,11 +34,11 @@ class FcmService
     }
 
     /**
-     * Send a data-only FCM message to multiple staff members.
+     * Send a data-only FCM message to multiple users.
      */
-    public function sendToStaffMembers(array $staffIds, array $data): void
+    public function sendToUsers(array $userIds, array $data): void
     {
-        $tokens = DeviceToken::whereIn('staff_id', $staffIds)
+        $tokens = DeviceToken::whereIn('user_id', $userIds)
             ->pluck('fcm_token')
             ->toArray();
 
@@ -50,16 +50,16 @@ class FcmService
     }
 
     /**
-     * Send to all active waiters.
+     * Send to users by role (e.g. waiters). Uses User model and status when present.
      */
-    public function sendToWaiters(array $data): void
+    public function sendToRole(string $role, array $data): void
     {
-        $waiterIds = Staff::where('role', 'waiter')
-            ->where('status', 'active')
-            ->pluck('id')
-            ->toArray();
-
-        $this->sendToStaffMembers($waiterIds, $data);
+        $query = User::where('role', $role);
+        if (\Schema::hasColumn('users', 'status')) {
+            $query->where('status', 'active');
+        }
+        $userIds = $query->pluck('id')->toArray();
+        $this->sendToUsers($userIds, $data);
     }
 
     /**

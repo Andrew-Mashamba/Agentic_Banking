@@ -61,6 +61,15 @@ class SettingsSeeder extends Seeder
             ['key' => 'timezone', 'value' => 'Africa/Dar_es_Salaam', 'type' => 'string'],
             ['key' => 'date_format', 'value' => 'd/m/Y', 'type' => 'string'],
             ['key' => 'time_format', 'value' => 'H:i', 'type' => 'string'],
+
+            // WhatsApp compliance (override via admin/settings; defaults match config)
+            ['key' => 'whatsapp_consent_required', 'value' => '1', 'type' => 'boolean'],
+            ['key' => 'whatsapp_retention_days_conversations', 'value' => '365', 'type' => 'integer'],
+            ['key' => 'whatsapp_pending_task_ttl_days', 'value' => '90', 'type' => 'integer'],
+            ['key' => 'whatsapp_retention_days_attachments', 'value' => '90', 'type' => 'integer'],
+            ['key' => 'whatsapp_audit_retention_years', 'value' => '7', 'type' => 'integer'],
+            ['key' => 'whatsapp_pending_task_max_per_user', 'value' => '5', 'type' => 'integer'],
+            ['key' => 'whatsapp_retention_days_memory', 'value' => '365', 'type' => 'integer'],
         ];
 
         foreach ($defaultSettings as $setting) {

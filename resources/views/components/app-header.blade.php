@@ -19,16 +19,13 @@
                     <div class="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
                         <span class="text-white font-bold text-sm">SC</span>
                     </div>
-                    <h1 class="text-xl font-bold text-gray-900">Sea Cliff Smart Dining</h1>
+                    <h1 class="text-xl font-bold text-gray-900">Agentic Banking</h1>
                 </div>
             </div>
 
             <!-- Notifications & User Menu -->
             @auth
             <div class="flex items-center gap-4">
-                <!-- Notifications Bell -->
-                @livewire('notification-bell')
-
                 <!-- User Menu -->
                 <div class="relative" x-data="{ dropdownOpen: false }">
                 <button
@@ -64,14 +61,9 @@
                         <div class="text-sm font-medium text-gray-900">{{ auth()->user()->name }}</div>
                         <div class="text-xs text-gray-600">{{ auth()->user()->email }}</div>
                     </div>
-                    <a href="{{ route('help.index') }}" class="block px-4 py-2 text-sm text-gray-900 hover:bg-gray-50 transition-colors">
-                        <div class="flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <span>Help & Documentation</span>
-                        </div>
-                    </a>
+                    @if(in_array(auth()->user()->role ?? '', ['admin', 'manager']))
+                        <a href="{{ route('settings') }}" class="block px-4 py-2 text-sm text-gray-900 hover:bg-gray-50 transition-colors">Settings</a>
+                    @endif
                     <form method="POST" action="{{ route('logout') }}" class="mt-1">
                         @csrf
                         <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-900 hover:bg-gray-50 transition-colors">

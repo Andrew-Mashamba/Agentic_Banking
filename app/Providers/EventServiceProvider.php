@@ -33,6 +33,9 @@ class EventServiceProvider extends ServiceProvider
         \App\Events\ManagerRequested::class => [
             \App\Listeners\SendManagerRequestFcm::class,
         ],
+        \App\Events\WhatsAppCircuitOpened::class => [
+            \App\Listeners\LogWhatsAppCircuitOpened::class,
+        ],
     ];
 
     /**

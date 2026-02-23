@@ -25,14 +25,8 @@ class AuthController extends Controller
 
             $user = Auth::user();
 
-            // Redirect based on role
-            return match ($user->role) {
-                'admin', 'manager' => redirect()->intended(route('manager.dashboard')),
-                'chef' => redirect()->intended(route('kitchen.display')),
-                'bartender' => redirect()->intended(route('bar.display')),
-                'waiter' => redirect()->intended(route('manager.dashboard')),
-                default => redirect()->route('login'),
-            };
+            // Redirect to settings (admin/manager) or dashboard (redirects to settings)
+            return redirect()->intended(route('settings'));
         }
 
         return back()->withErrors([

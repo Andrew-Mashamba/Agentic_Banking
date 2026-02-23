@@ -33,6 +33,11 @@ class User extends Authenticatable
         'role',
         'phone_number',
         'status',
+        'primary_account_id',
+        'pin_hash',
+        'transaction_pin_hash',
+        'biometric_enabled',
+        'preferences',
     ];
 
     /**
@@ -66,6 +71,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'preferences' => 'array',
+            'biometric_enabled' => 'boolean',
         ];
     }
 
@@ -75,5 +82,30 @@ class User extends Authenticatable
     public function hasRole(string $role): bool
     {
         return $this->role === $role;
+    }
+
+    public function accounts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Account::class);
+    }
+
+    public function primaryAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Account::class, 'primary_account_id');
+    }
+
+    public function beneficiaries(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Beneficiary::class);
+    }
+
+    public function cards(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Card::class);
+    }
+
+    public function loans(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Loan::class);
     }
 }

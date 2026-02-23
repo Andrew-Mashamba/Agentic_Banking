@@ -15,8 +15,8 @@ class SendFcmNotification implements ShouldQueue
     public int $backoff = 5;
 
     /**
-     * @param  string  $targetType  'staff', 'staff_members', or 'waiters'
-     * @param  array  $targetIds  Staff IDs (ignored for 'waiters')
+     * @param  string  $targetType  'user', 'users', or 'role'
+     * @param  array  $targetIds  User IDs (for 'user'/'users') or single role string (for 'role')
      * @param  array  $data  FCM data payload
      */
     public function __construct(
@@ -31,21 +31,16 @@ class SendFcmNotification implements ShouldQueue
             'target_type' => $this->targetType,
             'target_ids' => $this->targetIds,
             'data_type' => $this->data['type'] ?? 'unknown',
-            'order_id' => $this->data['order_id'] ?? null,
-            'prep_status' => $this->data['prep_status'] ?? $this->data['new_status'] ?? null,
         ]);
 
         match ($this->targetType) {
-            'staff' => $fcmService->sendToStaff($this->targetIds[0], $this->data),
-            'staff_members' => $fcmService->sendToStaffMembers($this->targetIds, $this->data),
-            'waiters' => $fcmService->sendToWaiters($this->data),
+            'user' => $fcmService->sendToUser((int) $this->targetIds[0], $this->data),
+            'users' => $fcmService->sendToUsers(array_map('intval', $this->targetIds), $this->data),
+            'role' => $fcmService->sendToRole((string) ($this->targetIds[0] ?? 'waiter'), $this->data),
             default => \Log::warning("FCM Job: Unknown target type: {$this->targetType}"),
         };
 
-        \Log::info('FCM Job: Completed', [
-            'data_type' => $this->data['type'] ?? 'unknown',
-            'order_id' => $this->data['order_id'] ?? null,
-        ]);
+        \Log::info('FCM Job: Completed', ['data_type' => $this->data['type'] ?? 'unknown']);
     }
 
     public function failed(\Throwable $exception): void

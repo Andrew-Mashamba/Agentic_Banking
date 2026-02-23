@@ -162,7 +162,7 @@ return [
             'driver' => 'daily',
             'path' => storage_path('logs/whatsapp.log'),
             'level' => 'debug',
-            'days' => 14,
+            'days' => (int) env('WHATSAPP_LOG_RETENTION_DAYS', 90),
             'replace_placeholders' => true,
         ],
 

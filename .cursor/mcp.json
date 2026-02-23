@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "banking-api": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-server-fetch"],
+      "env": {
+        "ALLOWED_HOSTS": "localhost,127.0.0.1"
+      }
+    }
+  }
+}

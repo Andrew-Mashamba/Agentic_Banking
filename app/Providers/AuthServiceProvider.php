@@ -2,8 +2,7 @@
 
 namespace App\Providers;
 
-use App\Models\Staff;
-use App\Policies\StaffPolicy;
+use App\Models\User;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 
@@ -15,7 +14,7 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        Staff::class => StaffPolicy::class,
+        //
     ];
 
     /**
@@ -25,37 +24,36 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
-        // Define role-specific gates
-        Gate::define('manage-staff', function (Staff $staff) {
-            return $staff->isAdmin() || $staff->isManager();
+        Gate::define('manage-staff', function (User $user) {
+            return in_array($user->role ?? '', ['admin', 'manager']);
         });
 
-        Gate::define('manage-orders', function (Staff $staff) {
-            return in_array($staff->role, ['admin', 'manager', 'waiter']);
+        Gate::define('manage-orders', function (User $user) {
+            return in_array($user->role ?? '', ['admin', 'manager', 'waiter']);
         });
 
-        Gate::define('manage-kitchen', function (Staff $staff) {
-            return in_array($staff->role, ['admin', 'manager', 'chef']);
+        Gate::define('manage-kitchen', function (User $user) {
+            return in_array($user->role ?? '', ['admin', 'manager', 'chef']);
         });
 
-        Gate::define('manage-bar', function (Staff $staff) {
-            return in_array($staff->role, ['admin', 'manager', 'bartender']);
+        Gate::define('manage-bar', function (User $user) {
+            return in_array($user->role ?? '', ['admin', 'manager', 'bartender']);
         });
 
-        Gate::define('access-admin', function (Staff $staff) {
-            return $staff->isAdmin();
+        Gate::define('access-admin', function (User $user) {
+            return ($user->role ?? '') === 'admin';
         });
 
-        Gate::define('access-manager', function (Staff $staff) {
-            return $staff->isAdmin() || $staff->isManager();
+        Gate::define('access-manager', function (User $user) {
+            return in_array($user->role ?? '', ['admin', 'manager']);
         });
 
-        Gate::define('view-reports', function (Staff $staff) {
-            return $staff->isAdmin() || $staff->isManager();
+        Gate::define('view-reports', function (User $user) {
+            return in_array($user->role ?? '', ['admin', 'manager']);
         });
 
-        Gate::define('manage-settings', function (Staff $staff) {
-            return $staff->isAdmin();
+        Gate::define('manage-settings', function (User $user) {
+            return ($user->role ?? '') === 'admin';
         });
     }
 }

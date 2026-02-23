@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\Setting;
 
 class WhatsAppSession extends Model
 {
@@ -14,9 +13,7 @@ class WhatsAppSession extends Model
         'phone_number',
         'state',
         'data',
-        'guest_id',
-        'current_order_id',
-        'current_table_id',
+        'guest_id', // reused as user_id for banking
         'last_activity_at',
     ];
 
@@ -32,28 +29,21 @@ class WhatsAppSession extends Model
         });
     }
 
-    public function guest(): BelongsTo
+    /**
+     * The user associated with this session (uses guest_id column for compatibility).
+     */
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(Guest::class);
-    }
-
-    public function currentOrder(): BelongsTo
-    {
-        return $this->belongsTo(Order::class, 'current_order_id');
-    }
-
-    public function currentTable(): BelongsTo
-    {
-        return $this->belongsTo(Table::class, 'current_table_id');
+        return $this->belongsTo(User::class, 'guest_id');
     }
 
     public function isExpired(): bool
     {
-        if (! $this->last_activity_at) {
+        if (!$this->last_activity_at) {
             return true;
         }
 
-        $timeout = Setting::get('whatsapp_session_timeout', config('whatsapp.session_timeout', 3600));
+        $timeout = config('whatsapp.session_timeout', 3600);
 
         return $this->last_activity_at->diffInSeconds(now()) > $timeout;
     }

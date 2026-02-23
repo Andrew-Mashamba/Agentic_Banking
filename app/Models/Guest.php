@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Guest extends Model
@@ -39,46 +38,6 @@ class Guest extends Model
     ];
 
     /**
-     * Get all orders for the guest.
-     */
-    public function orders(): HasMany
-    {
-        return $this->hasMany(Order::class);
-    }
-
-    /**
-     * Get all guest sessions for the guest.
-     */
-    public function guest_sessions(): HasMany
-    {
-        return $this->hasMany(GuestSession::class);
-    }
-
-    /**
-     * Get all sessions for the guest (alias).
-     */
-    public function sessions(): HasMany
-    {
-        return $this->hasMany(GuestSession::class);
-    }
-
-    /**
-     * Get all payments through orders.
-     */
-    public function payments(): HasManyThrough
-    {
-        return $this->hasManyThrough(Payment::class, Order::class);
-    }
-
-    /**
-     * Get the active session for the guest.
-     */
-    public function activeSession()
-    {
-        return $this->sessions()->where('status', 'active')->latest()->first();
-    }
-
-    /**
      * Get the WhatsApp session for the guest.
      */
     public function whatsappSession(): HasOne
@@ -87,27 +46,11 @@ class Guest extends Model
     }
 
     /**
-     * Get all reservations for the guest.
-     */
-    public function reservations(): HasMany
-    {
-        return $this->hasMany(Reservation::class);
-    }
-
-    /**
      * Get conversation history for the guest.
      */
     public function conversations(): HasMany
     {
         return $this->hasMany(GuestConversation::class);
-    }
-
-    /**
-     * Get all feedback for the guest.
-     */
-    public function feedback(): HasMany
-    {
-        return $this->hasMany(Feedback::class);
     }
 
     /**

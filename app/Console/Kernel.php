@@ -79,6 +79,15 @@ class Kernel extends ConsoleKernel
             ->weekly()
             ->sundays()
             ->at('05:00');
+
+        // WhatsApp compliance retention
+        $schedule->command('whatsapp:prune-conversations')->dailyAt('03:30');
+        $schedule->command('whatsapp:prune-pending-tasks')->dailyAt('03:35');
+        $schedule->command('whatsapp:prune-attachments')->dailyAt('03:40');
+        $schedule->command('whatsapp:prune-memory')->dailyAt('03:45');
+        $schedule->command('whatsapp:prune-logs')->dailyAt('03:50');
+        $schedule->command('whatsapp:prune-audit-logs')->monthlyOn(1, '04:00');
+        $schedule->job(new \App\Jobs\SummarizeConversationToMemory)->dailyAt('04:00');
     }
 
     /**

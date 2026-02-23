@@ -2,9 +2,12 @@
 
 namespace App\Jobs;
 
-use App\Models\Guest;
+use App\Exceptions\SidecarUnavailableException;
+use App\Models\User;
 use App\Services\WhatsApp\AiAgentService;
-use App\Services\WhatsApp\FlowManager;
+use App\Services\WhatsApp\ConversationManager;
+use App\Services\WhatsApp\CachedFallbackService;
+use App\Services\WhatsApp\PendingTaskService;
 use App\Services\WhatsApp\WhatsAppService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -12,102 +15,118 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Process a WhatsApp message via the AI agent asynchronously.
- *
- * This job is dispatched from MessageHandler so that the webhook
- * returns 200 immediately (within milliseconds) while the AI
- * processing happens in the background via the queue worker.
- *
- * If the AI agent fails, falls back to FlowManager.
+ * Dispatched from MessageHandler; webhook returns 200 immediately.
  */
 class ProcessAiMessage implements ShouldQueue
 {
     use Queueable;
 
-    public int $guestId;
+    public int $userId;
 
     public array $messageData;
 
     public string $currentState;
 
-    /**
-     * Number of times to attempt the job.
-     * AI calls can be flaky — allow 1 retry.
-     */
-    public int $tries = 2;
+    public int $tries = 3;
 
-    /**
-     * Seconds before the job times out.
-     * Must exceed the sidecar timeout (120s) + overhead.
-     */
     public int $timeout = 150;
 
-    /**
-     * Seconds to wait before retrying.
-     */
-    public int $backoff = 5;
-
-    public function __construct(int $guestId, array $messageData, string $currentState)
+    public function __construct(int $userId, array $messageData, string $currentState)
     {
-        $this->guestId = $guestId;
+        $this->userId = $userId;
         $this->messageData = $messageData;
         $this->currentState = $currentState;
-
-        // Use a dedicated queue for AI processing so it doesn't
-        // block notification/payment jobs on the default queue.
         $this->onQueue('ai');
     }
 
-    public function handle(AiAgentService $aiService, FlowManager $flowManager, WhatsAppService $whatsAppService): void
+    /**
+     * Exponential backoff with jitter: ~5s, ~15s, ~45s.
+     */
+    public function backoff(): array
     {
-        $guest = Guest::find($this->guestId);
+        return [
+            5 + random_int(0, 2),
+            15 + random_int(0, 5),
+            45 + random_int(0, 10),
+        ];
+    }
 
-        if (! $guest) {
-            Log::channel('whatsapp')->error('ProcessAiMessage: guest not found', [
-                'guest_id' => $this->guestId,
-            ]);
+    public function handle(
+        AiAgentService $aiService,
+        WhatsAppService $whatsAppService,
+        ConversationManager $conversationManager
+    ): void {
+        $user = User::find($this->userId);
 
+        if (!$user) {
+            Log::channel('whatsapp')->error('ProcessAiMessage: user not found', ['user_id' => $this->userId]);
             return;
         }
 
-        // Send typing indicator immediately so guest sees "typing..."
-        // while waiting for the AI response.
-        $whatsAppService->sendTypingIndicator($guest->phone_number);
+        $phone = $user->phone_number;
+        $whatsAppService->sendTypingIndicator($phone);
 
         Log::channel('whatsapp')->info('ProcessAiMessage: starting AI processing', [
-            'guest_id' => $guest->id,
-            'phone' => $guest->phone_number,
+            'user_id' => $user->id,
+            'phone' => $phone,
         ]);
 
         try {
-            $handled = $aiService->processMessage($guest, $this->messageData);
-
+            $handled = $aiService->processMessage($user, $this->messageData);
             if ($handled) {
-                Log::channel('whatsapp')->info('ProcessAiMessage: AI handled successfully', [
-                    'guest_id' => $guest->id,
-                ]);
-
+                $conversationManager->updateSessionData($phone, 'consecutive_ai_failures', 0);
+                Log::channel('whatsapp')->info('ProcessAiMessage: AI handled successfully', ['user_id' => $user->id]);
                 return;
             }
+        } catch (SidecarUnavailableException $e) {
+            if ($this->attempts() >= $this->tries) {
+                $this->sendUnavailableOrFallback($user, $phone, $whatsAppService);
+                return;
+            }
+            Log::channel('whatsapp')->warning('ProcessAiMessage: sidecar unavailable (will retry)', [
+                'user_id' => $user->id,
+                'attempt' => $this->attempts(),
+            ]);
+            throw $e;
         } catch (\Exception $e) {
             Log::channel('whatsapp')->error('ProcessAiMessage: AI exception', [
-                'guest_id' => $guest->id,
+                'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
         }
 
-        // AI failed — fall back to FlowManager
-        Log::channel('whatsapp')->warning('ProcessAiMessage: falling back to FlowManager', [
-            'guest_id' => $guest->id,
-            'state' => $this->currentState,
-        ]);
+        // AI did not handle — increment consecutive failures and send generic reply (mention pending tasks if any)
+        app(\App\Services\WhatsApp\WhatsAppMetricsService::class)->incrementAiFailures();
+        $sessionData = $conversationManager->getSessionData($phone);
+        $failures = (int) ($sessionData['consecutive_ai_failures'] ?? 0);
+        $conversationManager->updateSessionData($phone, 'consecutive_ai_failures', $failures + 1);
 
+        $fallback = app(PendingTaskService::class)->getFallbackMessageForUser($user);
         try {
-            $flowManager->processMessage($guest, $this->currentState, $this->messageData);
+            $whatsAppService->sendTextMessage($phone, $fallback);
         } catch (\Exception $e) {
-            Log::channel('whatsapp')->error('ProcessAiMessage: FlowManager fallback also failed', [
-                'guest_id' => $guest->id,
-                'error' => $e->getMessage(),
-            ]);
+            Log::channel('whatsapp')->warning('ProcessAiMessage: failed to send fallback message', ['error' => $e->getMessage()]);
+        }
+    }
+
+    protected function sendUnavailableOrFallback(User $user, string $phone, WhatsAppService $whatsAppService): void
+    {
+        $cached = app(CachedFallbackService::class);
+        $reply = $cached->tryReply($user, $this->messageData);
+        if ($reply !== null) {
+            try {
+                $whatsAppService->sendTextMessage($phone, $reply);
+            } catch (\Exception $e) {
+                Log::channel('whatsapp')->debug('Cached fallback send failed', ['error' => $e->getMessage()]);
+            }
+            return;
+        }
+        app(\App\Services\WhatsApp\WhatsAppMetricsService::class)->incrementAiFailures();
+        $msg = app(PendingTaskService::class)->getFallbackMessageForUser($user, true);
+        try {
+            $whatsAppService->sendTextMessage($phone, $msg);
+        } catch (\Exception $e) {
+            Log::channel('whatsapp')->warning('ProcessAiMessage: failed to send unavailable message', ['error' => $e->getMessage()]);
         }
     }
 }

@@ -22,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\CheckRole::class,
             'api.role' => \App\Http\Middleware\ApiCheckRole::class,
             'log.api' => \App\Http\Middleware\LogApiRequests::class,
+            'api.internal' => \App\Http\Middleware\InternalApiMiddleware::class,
         ]);
 
         // Log all API requests
